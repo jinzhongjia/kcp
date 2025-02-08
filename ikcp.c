@@ -50,6 +50,7 @@ const IUINT32 IKCP_FASTACK_LIMIT = 5;		// max times to trigger fastack
 // encode / decode
 //---------------------------------------------------------------------
 
+// 往指针 p 指向的内存位置写入一个 unsigned char c，然后将指针向后移动一位并返回新的指针位置
 /* encode 8 bits unsigned int */
 static inline char *ikcp_encode8u(char *p, unsigned char c)
 {
@@ -57,6 +58,7 @@ static inline char *ikcp_encode8u(char *p, unsigned char c)
 	return p;
 }
 
+// 从指针 p 所指内存读取一个字节并存储到 c，然后将 p 向后移动一位并返回更新后的指针
 /* decode 8 bits unsigned int */
 static inline const char *ikcp_decode8u(const char *p, unsigned char *c)
 {
@@ -64,6 +66,8 @@ static inline const char *ikcp_decode8u(const char *p, unsigned char *c)
 	return p;
 }
 
+// 将一个 16 位无符号整数 w 按字节写入缓冲区 p，然后将 p 向后移动 2 个字节并返回。若系统是大端或需要内存对齐，就手动拆分写入；否则直接使用 memcpy
+// 保证数据完全按照小端存储
 /* encode 16 bits unsigned int (lsb) */
 static inline char *ikcp_encode16u(char *p, unsigned short w)
 {
@@ -77,6 +81,7 @@ static inline char *ikcp_encode16u(char *p, unsigned short w)
 	return p;
 }
 
+// 从指针 p 指向的内存中读取 16 位小端格式的无符号整数，存入 w，然后将 p 后移 2 字节并返回。若系统是大端或有对齐需求，则手动拆分字节；否则用 memcpy 直接复制
 /* decode 16 bits unsigned int (lsb) */
 static inline const char *ikcp_decode16u(const char *p, unsigned short *w)
 {
@@ -90,6 +95,7 @@ static inline const char *ikcp_decode16u(const char *p, unsigned short *w)
 	return p;
 }
 
+// 编码 32位
 /* encode 32 bits unsigned int (lsb) */
 static inline char *ikcp_encode32u(char *p, IUINT32 l)
 {
@@ -105,6 +111,7 @@ static inline char *ikcp_encode32u(char *p, IUINT32 l)
 	return p;
 }
 
+// 解码 32 位
 /* decode 32 bits unsigned int (lsb) */
 static inline const char *ikcp_decode32u(const char *p, IUINT32 *l)
 {
@@ -128,11 +135,13 @@ static inline IUINT32 _imax_(IUINT32 a, IUINT32 b) {
 	return a >= b ? a : b;
 }
 
+// 取三者中间值
 static inline IUINT32 _ibound_(IUINT32 lower, IUINT32 middle, IUINT32 upper) 
 {
 	return _imin_(_imax_(lower, middle), upper);
 }
 
+// 计算差值
 static inline long _itimediff(IUINT32 later, IUINT32 earlier) 
 {
 	return ((IINT32)(later - earlier));
@@ -146,6 +155,7 @@ typedef struct IKCPSEG IKCPSEG;
 static void* (*ikcp_malloc_hook)(size_t) = NULL;
 static void (*ikcp_free_hook)(void *) = NULL;
 
+// 内部分配函数
 // internal malloc
 static void* ikcp_malloc(size_t size) {
 	if (ikcp_malloc_hook) 
@@ -153,6 +163,7 @@ static void* ikcp_malloc(size_t size) {
 	return malloc(size);
 }
 
+// 内部释放函数
 // internal free
 static void ikcp_free(void *ptr) {
 	if (ikcp_free_hook) {
@@ -162,6 +173,8 @@ static void ikcp_free(void *ptr) {
 	}
 }
 
+// 设定分配函数和释放函数
+// 可由用户自行指定内存管理方式
 // redefine allocator
 void ikcp_allocator(void* (*new_malloc)(size_t), void (*new_free)(void*))
 {
@@ -169,12 +182,14 @@ void ikcp_allocator(void* (*new_malloc)(size_t), void (*new_free)(void*))
 	ikcp_free_hook = new_free;
 }
 
+// 这个size是存储数据的
 // allocate a new kcp segment
 static IKCPSEG* ikcp_segment_new(ikcpcb *kcp, int size)
 {
 	return (IKCPSEG*)ikcp_malloc(sizeof(IKCPSEG) + size);
 }
 
+// 删除一个 segment
 // delete a segment
 static void ikcp_segment_delete(ikcpcb *kcp, IKCPSEG *seg)
 {
@@ -212,6 +227,7 @@ static int ikcp_output(ikcpcb *kcp, const void *data, int size)
 	return kcp->output((const char*)data, size, kcp, kcp->user);
 }
 
+// 无用
 // output queue
 void ikcp_qprint(const char *name, const struct IQUEUEHEAD *head)
 {
@@ -435,6 +451,7 @@ int ikcp_recv(ikcpcb *kcp, char *buffer, int len)
 }
 
 
+// 获取接收队列中待处理的数据大小
 //---------------------------------------------------------------------
 // peek data size
 //---------------------------------------------------------------------
@@ -543,7 +560,8 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 	return sent;
 }
 
-
+// 通过更新 rx_srtt 和 rx_rttval 来估计 RTT，并计算新的 RTO 值，以便在网络状况变化时动态调整重传超时
+// 实际上更新的是 RTO
 //---------------------------------------------------------------------
 // parse ack
 //---------------------------------------------------------------------
@@ -564,6 +582,7 @@ static void ikcp_update_ack(ikcpcb *kcp, IINT32 rtt)
 	kcp->rx_rto = _ibound_(kcp->rx_minrto, rto, IKCP_RTO_MAX);
 }
 
+// 检查发送缓冲区，更新 kcp->snd_una 为发送缓冲区中第一个未确认的数据段的序列号。如果发送缓冲区为空，则将 kcp->snd_una 更新为下一个待发送的序列号。这样可以确保 kcp->snd_una 始终指向当前未确认的最小序列号。
 static void ikcp_shrink_buf(ikcpcb *kcp)
 {
 	struct IQUEUEHEAD *p = kcp->snd_buf.next;
@@ -575,6 +594,7 @@ static void ikcp_shrink_buf(ikcpcb *kcp)
 	}
 }
 
+// 通过遍历发送缓冲区，找到并删除已被确认的数据段，释放相应的内存，并更新发送缓冲区的计数
 static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn)
 {
 	struct IQUEUEHEAD *p, *next;
@@ -597,6 +617,7 @@ static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn)
 	}
 }
 
+// 通过遍历发送缓冲区，删除所有序列号小于 una 的数据段，释放相应的内存，并更新发送缓冲区的计数。这样可以确保发送缓冲区中只保留未被确认的数据段。
 static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una)
 {
 	struct IQUEUEHEAD *p, *next;
@@ -1250,6 +1271,7 @@ int ikcp_interval(ikcpcb *kcp, int interval)
 	return 0;
 }
 
+// 设置启动快速模式，也可以调整为其他参数
 int ikcp_nodelay(ikcpcb *kcp, int nodelay, int interval, int resend, int nc)
 {
 	if (nodelay >= 0) {

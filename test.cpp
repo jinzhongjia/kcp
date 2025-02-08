@@ -61,7 +61,7 @@ void test(int mode)
 		ikcp_nodelay(kcp2, 0, 10, 0, 0);
 	}
 	else if (mode == 1) {
-		// 普通模式，关闭流控等
+		// 普通模式，关闭流控（拥塞控制）等
 		ikcp_nodelay(kcp1, 0, 10, 0, 1);
 		ikcp_nodelay(kcp2, 0, 10, 0, 1);
 	}	else {
@@ -88,7 +88,7 @@ void test(int mode)
 		ikcp_update(kcp1, iclock());
 		ikcp_update(kcp2, iclock());
 
-		// 每隔 20ms，kcp1发送数据
+		// 每隔 20ms，kcp1可以发一次数据
 		for (; current >= slap; slap += 20) {
 			((IUINT32*)buffer)[0] = index++;
 			((IUINT32*)buffer)[1] = current;

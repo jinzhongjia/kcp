@@ -138,9 +138,6 @@ struct IQUEUEHEAD {
 	struct IQUEUEHEAD *next, *prev;
 };
 
-typedef struct IQUEUEHEAD iqueue_head;
-
-
 //---------------------------------------------------------------------
 // queue init                                                         
 //---------------------------------------------------------------------
@@ -151,35 +148,44 @@ typedef struct IQUEUEHEAD iqueue_head;
 #define IQUEUE_INIT(ptr) ( \
 	(ptr)->next = (ptr), (ptr)->prev = (ptr))
 
+// 计算结构体成员相对于结构体起始位置的偏移量
 #define IOFFSETOF(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 
+// 通过结构体成员的指针获取包含该成员的结构体的指针
 #define ICONTAINEROF(ptr, type, member) ( \
 		(type*)( ((char*)((type*)ptr)) - IOFFSETOF(type, member)) )
 
+// 通过结构体成员的指针获取包含该成员的结构体的指针
 #define IQUEUE_ENTRY(ptr, type, member) ICONTAINEROF(ptr, type, member)
 
 
 //---------------------------------------------------------------------
 // queue operation                     
 //---------------------------------------------------------------------
+// 头插
 #define IQUEUE_ADD(node, head) ( \
 	(node)->prev = (head), (node)->next = (head)->next, \
 	(head)->next->prev = (node), (head)->next = (node))
 
+// 尾插
 #define IQUEUE_ADD_TAIL(node, head) ( \
 	(node)->prev = (head)->prev, (node)->next = (head), \
 	(head)->prev->next = (node), (head)->prev = (node))
 
+// 节点 p 和节点 n 之间的节点被移除，链表重新连接
 #define IQUEUE_DEL_BETWEEN(p, n) ((n)->prev = (p), (p)->next = (n))
 
+// 把双向链表中的 entry 节点移除
 #define IQUEUE_DEL(entry) (\
 	(entry)->next->prev = (entry)->prev, \
 	(entry)->prev->next = (entry)->next, \
 	(entry)->next = 0, (entry)->prev = 0)
 
+// 将entry 从原本的双向链表中移除，并将其初始化为一个新的独立节点
 #define IQUEUE_DEL_INIT(entry) do { \
 	IQUEUE_DEL(entry); IQUEUE_INIT(entry); } while (0)
 
+// 判断链表是否为空
 #define IQUEUE_IS_EMPTY(entry) ((entry) == (entry)->next)
 
 #define iqueue_init		IQUEUE_INIT
@@ -190,27 +196,32 @@ typedef struct IQUEUEHEAD iqueue_head;
 #define iqueue_del_init	IQUEUE_DEL_INIT
 #define iqueue_is_empty IQUEUE_IS_EMPTY
 
+// 遍历双向链表
 #define IQUEUE_FOREACH(iterator, head, TYPE, MEMBER) \
 	for ((iterator) = iqueue_entry((head)->next, TYPE, MEMBER); \
 		&((iterator)->MEMBER) != (head); \
 		(iterator) = iqueue_entry((iterator)->MEMBER.next, TYPE, MEMBER))
 
+// 遍历双向链表
 #define iqueue_foreach(iterator, head, TYPE, MEMBER) \
 	IQUEUE_FOREACH(iterator, head, TYPE, MEMBER)
 
+// 遍历以 head 为头节点的循环双向链表
 #define iqueue_foreach_entry(pos, head) \
 	for( (pos) = (head)->next; (pos) != (head) ; (pos) = (pos)->next )
 	
-
+// 将 list 链表中的节点插入到 head 链表之后
 #define __iqueue_splice(list, head) do {	\
 		iqueue_head *first = (list)->next, *last = (list)->prev; \
 		iqueue_head *at = (head)->next; \
 		(first)->prev = (head), (head)->next = (first);		\
 		(last)->next = (at), (at)->prev = (last); }	while (0)
 
+// 先判断 list 是否为空，若不为空则调用 __iqueue_splice(list, head) 将 list 合并到 head 链表中。
 #define iqueue_splice(list, head) do { \
 	if (!iqueue_is_empty(list)) __iqueue_splice(list, head); } while (0)
 
+// 将 list 合并到 head，随后将 list 重新初始化为空链表
 #define iqueue_splice_init(list, head) do {	\
 	iqueue_splice(list, head);	iqueue_init(list); } while (0)
 
@@ -267,19 +278,19 @@ typedef struct IQUEUEHEAD iqueue_head;
 struct IKCPSEG
 {
 	struct IQUEUEHEAD node;
-	IUINT32 conv;
-	IUINT32 cmd;
-	IUINT32 frg;
-	IUINT32 wnd;
-	IUINT32 ts;
-	IUINT32 sn;
-	IUINT32 una;
-	IUINT32 len;
-	IUINT32 resendts;
-	IUINT32 rto;
-	IUINT32 fastack;
-	IUINT32 xmit;
-	char data[1];
+	IUINT32 conv; // 会话编号 
+	IUINT32 cmd; // 指令
+	IUINT32 frg; // 分片编号
+	IUINT32 wnd; // 窗口大小
+	IUINT32 ts; // 时间戳
+	IUINT32 sn; // 序列号
+	IUINT32 una; // 未确认序列号
+	IUINT32 len; // 数据长度
+	IUINT32 resendts; // 重传时间戳
+	IUINT32 rto; // 超时重传时间
+	IUINT32 fastack; // 快速重传标记，记录收到同一报文确认的次数
+	IUINT32 xmit; // 重传次数
+	char data[1]; // 数据
 };
 
 
@@ -288,16 +299,27 @@ struct IKCPSEG
 //---------------------------------------------------------------------
 struct IKCPCB
 {
+	// 会话编号、最大传输单元、最大分片大小、状态
 	IUINT32 conv, mtu, mss, state;
+	// 未确认的发送序号、下一个发送序号、下一个接收序号
 	IUINT32 snd_una, snd_nxt, rcv_nxt;
+	// 最近的时间戳、最近的确认时间戳、拥塞避免的慢启动阈值
 	IUINT32 ts_recent, ts_lastack, ssthresh;
+	// RTT 的偏差、RTT 的平均值、重传超时时间、最小重传超时时间
 	IINT32 rx_rttval, rx_srtt, rx_rto, rx_minrto;
+	// 发送窗口大小、接收窗口大小、远端窗口大小、拥塞窗口大小、探测标志
 	IUINT32 snd_wnd, rcv_wnd, rmt_wnd, cwnd, probe;
+	// 当前时间戳、刷新间隔时间、下次刷新时间戳、发送次数
 	IUINT32 current, interval, ts_flush, xmit;
+	// 接收缓冲区的数据包数量、发送缓冲区的数据包数量
 	IUINT32 nrcv_buf, nsnd_buf;
+	// 接收队列中的数据包数量、发送队列中的数据包数量
 	IUINT32 nrcv_que, nsnd_que;
+	// 延迟模式标志，表示是否启用无延迟模式、更新标志，表示是否需要更新 KCP 状态
 	IUINT32 nodelay, updated;
+	// 下次探测时间戳，用于窗口探测、探测等待时间，表示等待多长时间后进行下一次窗口探测
 	IUINT32 ts_probe, probe_wait;
+	// 死链标志，表示连接是否已经失效、增量，用于控制流量的增加速率
 	IUINT32 dead_link, incr;
 	struct IQUEUEHEAD snd_queue;
 	struct IQUEUEHEAD rcv_queue;
@@ -308,9 +330,13 @@ struct IKCPCB
 	IUINT32 ackblock;
 	void *user;
 	char *buffer;
+	// 快速重传标志，表示启用快速重传功能
 	int fastresend;
+	// 快速重传限制，表示在一个 RTT 内允许的最大重传次数
 	int fastlimit;
+	// 无拥塞窗口控制标志，表示是否禁用拥塞窗口控制、流模式标志，表示是否启用流模式
 	int nocwnd, stream;
+	// 日志掩码，用于控制日志输出的级别
 	int logmask;
 	int (*output)(const char *buf, int len, struct IKCPCB *kcp, void *user);
 	void (*writelog)(const char *log, struct IKCPCB *kcp, void *user);
@@ -340,29 +366,38 @@ extern "C" {
 // interface
 //---------------------------------------------------------------------
 
+// 创建一个新的 KCP 控制对象
 // create a new kcp control object, 'conv' must equal in two endpoint
 // from the same connection. 'user' will be passed to the output callback
 // output callback can be setup like this: 'kcp->output = my_udp_output'
 ikcpcb* ikcp_create(IUINT32 conv, void *user);
 
+// 释放一个 KCP 控制对象
 // release kcp control object
 void ikcp_release(ikcpcb *kcp);
 
+// 设置 KCP 的输出回调函数，这个回调函数在 KCP 需要发送数据时被调用。
 // set output callback, which will be invoked by kcp
 void ikcp_setoutput(ikcpcb *kcp, int (*output)(const char *buf, int len, 
 	ikcpcb *kcp, void *user));
 
+// 从 KCP 的接收队列中接收数据，用于上层从 KCP 中读取数据
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);
 
+
+// 向 KCP 的发送队列中添加数据，用于上层向 KCP 发送数据，KCP 会管理这些数据并负责其可靠传输。
 // user/upper level send, returns below zero for error
 int ikcp_send(ikcpcb *kcp, const char *buffer, int len);
 
+// 更新 KCP 的内部状态，通常需要定期调用。
+// 这个函数负责处理 KCP 的超时、重传等操作，需要在一定的时间间隔内反复调用（通常每 10-100 毫秒）。
 // update state (call it repeatedly, every 10ms-100ms), or you can ask 
 // ikcp_check when to call it again (without ikcp_input/_send calling).
 // 'current' - current timestamp in millisec. 
 void ikcp_update(ikcpcb *kcp, IUINT32 current);
 
+// 判断是否要调用 ikcp_update
 // Determine when should you invoke ikcp_update:
 // returns when you should invoke ikcp_update in millisec, if there 
 // is no ikcp_input/_send calling. you can call ikcp_update in that
@@ -372,9 +407,11 @@ void ikcp_update(ikcpcb *kcp, IUINT32 current);
 // or optimize ikcp_update when handling massive kcp connections)
 IUINT32 ikcp_check(const ikcpcb *kcp, IUINT32 current);
 
+// 处理接收到的低层数据包（例如 UDP 包）。
 // when you received a low level packet (eg. UDP packet), call it
 int ikcp_input(ikcpcb *kcp, const char *data, long size);
 
+// 将缓冲区可以发送的包发送出去，会在 ikcp_update 中被调用。
 // flush pending data
 void ikcp_flush(ikcpcb *kcp);
 
